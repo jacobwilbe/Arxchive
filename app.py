@@ -19,8 +19,20 @@ COLUMNS = [
     "relative_path"
 ]
 
+def create_session():
+    connection_parameters = {
+        "account": st.secrets["ragnroll_connection"]["account"],
+        "user": st.secrets["ragnroll_connection"]["user"],
+        "password": st.secrets["ragnroll_connection"]["password"],
+        "warehouse": st.secrets["ragnroll_connection"]["warehouse"],
+        "database": st.secrets["ragnroll_connection"]["database"],
+        "schema": st.secrets["ragnroll_connection"]["schema"]
+    }
+    return Session.builder.configs(connection_parameters).create()
+
+
 st.set_page_config(layout="wide")
-session = Session.builder.config("connection_name", "ragnroll_connection").create()
+session = create_session()
 root = Root(session)
 my_stage_res = root.databases["ARXIV_RAG"].schemas["ARXIV_DATA"].stages["RESEARCH"]
 svc = root.databases[CORTEX_SEARCH_DATABASE].schemas[CORTEX_SEARCH_SCHEMA].cortex_search_services[CORTEX_SEARCH_SERVICE]
