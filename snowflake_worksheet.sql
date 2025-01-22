@@ -54,21 +54,32 @@ create or replace stream research_stream on stage research;
 -- Create task to handle PDF parsing and title extraction
 
 -- Second task that depends on the first task
-create or replace task parse_and_insert_pdf_task
-    warehouse = COMPUTE_WH
-    schedule = '1 minute'
-    when system$stream_has_data('research_stream')
-    as
-    insert into research_chunks_table (relative_path, size, chunk)
-    select relative_path, 
-            size,
-            func.chunk as chunk
-    from 
-        research_stream,
-        TABLE(text_chunker (TO_VARCHAR(SNOWFLAKE.CORTEX.PARSE_DOCUMENT(@research, relative_path, {'mode': 'LAYOUT'})))) as func;
+
+CREATE OR REPLACE TASK refresh_stage_task
+WAREHOUSE = COMPUTE_WH
+SCHEDULE = '1 minute' -- Adjust the schedule based on your latency requirements
+AS
+ALTER STAGE research REFRESH;
+
+
+CREATE OR REPLACE TASK parse_and_insert_pdf_task
+WAREHOUSE = COMPUTE_WH
+AFTER refresh_stage_task -- Specify the dependency
+WHEN SYSTEM$STREAM_HAS_DATA('research_stream') -- Trigger only when there’s data in the stream
+AS
+INSERT INTO research_chunks_table (relative_path, size, chunk)
+SELECT 
+    relative_path,
+    size,
+    func.chunk AS chunk
+FROM 
+    research_stream,
+    TABLE(text_chunker(TO_VARCHAR(SNOWFLAKE.CORTEX.PARSE_DOCUMENT(@research, relative_path, {'mode': 'LAYOUT'})))) AS func;
+
 
 
 -- Resume the tasks in the correct order
+alter task refresh_stage_task resume;
 alter task parse_and_insert_pdf_task resume;
 
 
