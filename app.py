@@ -18,7 +18,8 @@ COLUMNS = [
     "chunk",
     "relative_path"
 ]
-
+st.set_page_config(layout="wide")
+"""
 def create_session():
     connection_parameters = {
         "account": st.secrets["ragnroll_connection"]["account"],
@@ -29,10 +30,9 @@ def create_session():
         "schema": st.secrets["ragnroll_connection"]["schema"]
     }
     return Session.builder.configs(connection_parameters).create()
+"""
 
-
-st.set_page_config(layout="wide")
-session = create_session()
+session = Session.builder.config("connection_name", "ragnroll_connection").create()
 root = Root(session)
 my_stage_res = root.databases["ARXIV_RAG"].schemas["ARXIV_DATA"].stages["RESEARCH"]
 svc = root.databases[CORTEX_SEARCH_DATABASE].schemas[CORTEX_SEARCH_SCHEMA].cortex_search_services[CORTEX_SEARCH_SERVICE]
@@ -71,7 +71,23 @@ def fetch_papers(query, max_results, start_year, end_year):
     return papers
 
 def get_similar_chunks(query):
-    response = svc.search(query, COLUMNS, limit=NUM_CHUNKS)
+    
+    sample_paths = session.sql(f"""
+        SELECT DISTINCT RELATIVE_PATH 
+        FROM {CORTEX_SEARCH_DATABASE}.{CORTEX_SEARCH_SCHEMA}.RESEARCH_CHUNKS_TABLE
+        LIMIT 5
+    """).collect()
+    st.sidebar.text("Sample paths in database:")
+    for row in sample_paths:
+        st.sidebar.text(row['RELATIVE_PATH'])
+
+        
+    st.sidebar.text(f"PDF path in session: {st.session_state.pdf_path}")
+    st.sidebar.text(f"Path after slicing: {st.session_state.pdf_path[6:]}")
+
+    filter_obj = {"@eq": {"relative_path": st.session_state.pdf_path[6:]} }
+    response = svc.search(query, COLUMNS, filter=filter_obj, limit=NUM_CHUNKS)
+
     st.sidebar.json(response.json())
     return response.json()
 
@@ -173,8 +189,6 @@ def answer_question(myquestion):
     return response
 
 def display_pdf(pdf_path):
-    """Display a PDF file in Streamlit using HTML iframe."""
-    # Read PDF file
     with open(pdf_path, "rb") as f:
         base64_pdf = base64.b64encode(f.read()).decode('utf-8')
     css = """
@@ -194,7 +208,6 @@ def display_pdf(pdf_path):
             }
         </style>
     """
-    # Embed PDF viewer
     pdf_display = f"""
     {css}
         <div class="pdf-container">
@@ -257,7 +270,12 @@ def reset_chat():
 def init_chat(paper):
     st.session_state.current_paper = paper
     pdf_path = paper.download_pdf()
-    st.session_state.pdf_path = pdf_path
+    saved_pdf_path = os.path.join("files", os.path.basename(pdf_path))
+    os.makedirs("files", exist_ok=True)  # Ensure the directory exists
+    with open(saved_pdf_path, "wb") as f:
+        with open(pdf_path, "rb") as downloaded_pdf:
+            f.write(downloaded_pdf.read())
+    st.session_state.pdf_path = saved_pdf_path
     st.session_state.messages = [] 
 
 def fetch_and_chat_callback():
