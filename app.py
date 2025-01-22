@@ -328,6 +328,8 @@ def main():
                 st.form_submit_button("Fetch and Chat", on_click=fetch_and_chat_callback())
             else:
                 st.form_submit_button("Fetch and Chat", on_click=fetch_and_chat_callback())
+                st.session_state.start_year = 1991
+                st.session_state.end_year = datetime.datetime.now().year
         # Display papers
         if st.session_state.papers:
             for paper in st.session_state.papers:
