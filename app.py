@@ -100,8 +100,6 @@ def get_chat_history():
     return chat_history
 
 def summarize_question_with_history(chat_history, question):
-# To get the right context, use the LLM to first summarize the previous conversation
-# This will be used to get embeddings and find similar chunks in the docs for context
 
     prompt = f"""
         Based on the chat history below, the paper details, and the user's question, generate a query that extend the question
@@ -132,7 +130,7 @@ def create_prompt (myquestion):
 
     chat_history = get_chat_history()
 
-    if chat_history != []: #There is chat_history, so not first question
+    if chat_history != []: 
         question_summary = summarize_question_with_history(chat_history, myquestion)
         prompt_context =  get_similar_chunks(question_summary)
     else:
@@ -219,11 +217,11 @@ def display_pdf(pdf_path):
     st.markdown(pdf_display, unsafe_allow_html=True)
 
 def display_paper_chat(paper):
-    # Create two columns using st.columns with no gap
+    
     left_column, right_column = st.columns([5, 5])
     with left_column:
         st.markdown(f"### 📄 {paper.title}")
-        # Download and display PDF
+        
         try:
             display_pdf(st.session_state.pdf_path)
             if st.session_state.pdf_path not in st.session_state.uploaded_papers:
@@ -234,10 +232,10 @@ def display_paper_chat(paper):
             st.error(f"Error displaying PDF: {str(e)}")
             st.markdown(f"You can view the paper directly on [arXiv]({paper.entry_id})")
     with right_column:
-        # Create a container for the entire chat interface
+        
         messages = st.container()
 
-# Loop through the chat history stored in session state
+
         for message in st.session_state.messages:
             with messages.chat_message(message["role"]):
                 st.markdown(message["content"])
@@ -247,20 +245,20 @@ def display_paper_chat(paper):
             # Add user message to the session state
             st.session_state.messages.append({"role": "user", "content": prompt})
 
-            # Display user message in the chat
+            
             with messages.chat_message("user"):
                 st.markdown(prompt)
 
             # Generate assistant's response
             with messages.chat_message("assistant"):
                 with st.spinner("Thinking..."):
-                    response = answer_question(prompt)  # Call your function to get the response
+                    response = answer_question(prompt)  
                 st.markdown(response)
 
-            # Add assistant's response to the session state
+            
             st.session_state.messages.append({"role": "assistant", "content": response})
             
-            # Rerun to show new messages
+            
 def reset_chat():
     st.session_state.pdf_path = None
     st.session_state.current_paper = None
@@ -270,7 +268,7 @@ def init_chat(paper):
     st.session_state.current_paper = paper
     pdf_path = paper.download_pdf()
     saved_pdf_path = os.path.join("files", os.path.basename(pdf_path))
-    os.makedirs("files", exist_ok=True)  # Ensure the directory exists
+    os.makedirs("files", exist_ok=True)  
     with open(saved_pdf_path, "wb") as f:
         with open(pdf_path, "rb") as downloaded_pdf:
             f.write(downloaded_pdf.read())
@@ -293,9 +291,9 @@ def main():
     st.sidebar.expander("Session State").write(st.session_state)
     st.title("Arxchive: Chat with any research paper")
 
-    # Check if we're in chat mode
+    
     if st.session_state.current_paper is not None:
-        # Add a button to go back to search
+        
         st.button("← Back to Search", on_click=reset_chat)
         display_paper_chat(st.session_state.current_paper)
 
