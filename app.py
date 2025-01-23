@@ -1,4 +1,5 @@
 import datetime
+import requests
 import streamlit as st
 from snowflake.snowpark import Session
 from snowflake.core import Root
@@ -19,7 +20,7 @@ COLUMNS = [
     "relative_path"
 ]
 st.set_page_config(layout="wide")
-
+"""
 def create_session():
     connection_parameters = {
         "account": st.secrets["ragnroll_connection"]["account"],
@@ -30,8 +31,8 @@ def create_session():
         "schema": st.secrets["ragnroll_connection"]["schema"]
     }
     return Session.builder.configs(connection_parameters).create()
-
-session = create_session()
+"""
+session = Session.builder.config("connection_name", "ragnroll_connection").create()
 root = Root(session)
 my_stage_res = root.databases["ARXIV_RAG"].schemas["ARXIV_DATA"].stages["RESEARCH"]
 svc = root.databases[CORTEX_SEARCH_DATABASE].schemas[CORTEX_SEARCH_SCHEMA].cortex_search_services[CORTEX_SEARCH_SERVICE]
@@ -55,6 +56,8 @@ def init_session_state():
         st.session_state.start_year = 1991
     if "end_year" not in st.session_state:
         st.session_state.end_year = datetime.datetime.now().year
+    if "pdf_url" not in st.session_state:
+        st.session_state.pdf_url = None
 
 def fetch_papers(query, max_results, start_year, end_year):
     start_date = f"{start_year}0101"
@@ -82,9 +85,9 @@ def get_similar_chunks(query):
 
         
     st.sidebar.text(f"PDF path in session: {st.session_state.pdf_path}")
-    st.sidebar.text(f"Path after slicing: {st.session_state.pdf_path[6:]}")
+    st.sidebar.text(f"Path after slicing: {st.session_state.pdf_path[2:]}")
 
-    filter_obj = {"@eq": {"relative_path": st.session_state.pdf_path[6:]} }
+    filter_obj = {"@eq": {"relative_path": st.session_state.pdf_path[2:]} }
     response = svc.search(query, COLUMNS, filter=filter_obj, limit=NUM_CHUNKS)
 
     st.sidebar.json(response.json())
@@ -185,52 +188,36 @@ def answer_question(myquestion):
 
     return response
 
-def display_pdf(pdf_path):
-    with open(pdf_path, "rb") as f:
-        base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-    css = """
-        <style>
-            .pdf-container {
-                width: 100%;
-                height: 100vh;
-                max-height: calc(100vh - 100px);
-                overflow: hidden;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-            }
-            .pdf-container iframe {
-                width: 100%;
-                height: 100%;
-                border: none;
-            }
-        </style>
-    """
-    pdf_display = f"""
-    {css}
-        <div class="pdf-container">
-            <iframe
-                src="data:application/pdf;base64,{base64_pdf}"
-                type="application/pdf">
-            </iframe>
-        </div>
-    """
-    st.markdown(pdf_display, unsafe_allow_html=True)
-
+def display_pdf():
+    """Display a PDF stored in session state."""
+    if st.session_state.pdf_url:
+        response = requests.get(st.session_state.pdf_url)
+    if response.status_code == 200:
+        pdf_binary = response.content
+        base64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
+        pdf_display = f"""
+        <iframe src="data:application/pdf;base64,{base64_pdf}" 
+                width="100%" height="600px" frameborder="0"></iframe>
+        """
+        st.markdown(pdf_display, unsafe_allow_html=True)
+    else:
+        st.error("No PDF available to display.")
+    
 def display_paper_chat(paper):
     
     left_column, right_column = st.columns([5, 5])
     with left_column:
         st.markdown(f"### 📄 {paper.title}")
         
-        try:
-            display_pdf(st.session_state.pdf_path)
-            if st.session_state.pdf_path not in st.session_state.uploaded_papers:
-                my_stage_res.put(st.session_state.pdf_path, "/", auto_compress=False, overwrite=True)
-                st.session_state.uploaded_papers.add(st.session_state.pdf_path)
-                st.success(f"Successfully uploaded {paper.title} to the staging area.")
-        except Exception as e:
-            st.error(f"Error displaying PDF: {str(e)}")
-            st.markdown(f"You can view the paper directly on [arXiv]({paper.entry_id})")
+        display_pdf()
+        if st.session_state.pdf_path not in st.session_state.uploaded_papers:
+            my_stage_res.put(st.session_state.pdf_path, "/", auto_compress=False, overwrite=True)
+            st.session_state.uploaded_papers.add(st.session_state.pdf_path)
+            st.success(f"Successfully uploaded {paper.title} to the staging area.")
+            os.remove(st.session_state.pdf_path)
+    
+        
+        st.markdown(f"You can view the paper directly on [arXiv]({paper.entry_id})")
     with right_column:
         
         messages = st.container()
@@ -266,13 +253,10 @@ def reset_chat():
 
 def init_chat(paper):
     st.session_state.current_paper = paper
-    pdf_path = paper.download_pdf()
-    saved_pdf_path = os.path.join("files", os.path.basename(pdf_path))
-    os.makedirs("files", exist_ok=True)  
-    with open(saved_pdf_path, "wb") as f:
-        with open(pdf_path, "rb") as downloaded_pdf:
-            f.write(downloaded_pdf.read())
-    st.session_state.pdf_path = saved_pdf_path
+    pdf_url = paper.links[1].href
+    st.session_state.pdf_url = pdf_url
+    st.session_state.pdf_path = paper.download_pdf()
+    print(pdf_url)
     st.session_state.messages = [] 
 
 def fetch_and_chat_callback():
