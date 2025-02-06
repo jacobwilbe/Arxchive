@@ -7,6 +7,7 @@ import arxiv
 import os
 import base64
 from snowflake.cortex import Complete
+import tempfile
 
 NUM_CHUNKS = 3
 slide_window = 7
@@ -191,17 +192,24 @@ def answer_question(myquestion):
 def display_pdf():
     """Display a PDF stored in session state."""
     if st.session_state.pdf_url:
-        response = requests.get(st.session_state.pdf_url)
-        if response.status_code == 200:
-            pdf_binary = response.content
-            base64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
-            pdf_display = f"""
-            <iframe src="data:application/pdf;base64,{base64_pdf}" 
-                    width="100%" height="600px" frameborder="0"></iframe>
-            """
-            st.markdown(pdf_display, unsafe_allow_html=True)
-        else:
-            st.error("No PDF available to display.")
+        try:
+            response = requests.get(st.session_state.pdf_url)
+            if response.status_code == 200:
+                # Create a temporary file
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                    tmp_file.write(response.content)
+                    tmp_file.flush()
+                    
+                # Display PDF using st.pdf_viewer
+                with open(tmp_file.name, "rb") as f:
+                    st.pdf_viewer(f)
+                
+                # Clean up the temporary file
+                os.unlink(tmp_file.name)
+            else:
+                st.error("No PDF available to display.")
+        except Exception as e:
+            st.error(f"Error displaying PDF: {str(e)}")
     
 def display_paper_chat(paper):
     
@@ -228,7 +236,7 @@ def display_paper_chat(paper):
                 st.markdown(message["content"])
 
         # Accept user input
-        if prompt := st.chat_input("What do you want to know about your products?"):
+        if prompt := st.chat_input(f"What do you want to know about {st.session_state.current_paper.title}?"):
             # Add user message to the session state
             st.session_state.messages.append({"role": "user", "content": prompt})
 
