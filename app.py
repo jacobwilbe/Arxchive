@@ -20,7 +20,7 @@ COLUMNS = [
     "relative_path"
 ]
 st.set_page_config(layout="wide")
-"""
+
 def create_session():
     connection_parameters = {
         "account": st.secrets["ragnroll_connection"]["account"],
@@ -31,8 +31,8 @@ def create_session():
         "schema": st.secrets["ragnroll_connection"]["schema"]
     }
     return Session.builder.configs(connection_parameters).create()
-"""
-session = Session.builder.config("connection_name", "ragnroll_connection").create()
+
+session = create_session()
 root = Root(session)
 my_stage_res = root.databases["ARXIV_RAG"].schemas["ARXIV_DATA"].stages["RESEARCH"]
 svc = root.databases[CORTEX_SEARCH_DATABASE].schemas[CORTEX_SEARCH_SCHEMA].cortex_search_services[CORTEX_SEARCH_SERVICE]
@@ -87,7 +87,7 @@ def get_similar_chunks(query):
     st.sidebar.text(f"PDF path in session: {st.session_state.pdf_path}")
     st.sidebar.text(f"Path after slicing: {st.session_state.pdf_path[2:]}")
 
-    filter_obj = {"@eq": {"relative_path": st.session_state.pdf_path[2:]} }
+    filter_obj = {"@eq": {"relative_path": st.session_state.pdf_path[2:] } }
     response = svc.search(query, COLUMNS, filter=filter_obj, limit=NUM_CHUNKS)
 
     st.sidebar.json(response.json())
@@ -157,7 +157,7 @@ def create_prompt (myquestion):
             - Connect new information with previously discussed points when relevant
             - Break down complex concepts into understandable parts
             - Stay focused on the paper's content and findings
-            - Ensure mathematical expressions are correctly formatted using LaTeX-style syntax (e.g., wrap inline math expressions with `$...$` and block math with `$$...$$` for proper rendering)
+            - Ensure mathematical expressions in LaTeX and correctly rendered in markdown, wrap equations with $...$ for inline equations and $$...$$ for display equations
             - Provide clear descriptions of equations and symbols when introducing them, to aid comprehension
             - Format responses for clarity, with headings or bullet points if helpful for readability
 
@@ -192,16 +192,16 @@ def display_pdf():
     """Display a PDF stored in session state."""
     if st.session_state.pdf_url:
         response = requests.get(st.session_state.pdf_url)
-    if response.status_code == 200:
-        pdf_binary = response.content
-        base64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
-        pdf_display = f"""
-        <iframe src="data:application/pdf;base64,{base64_pdf}" 
-                width="100%" height="600px" frameborder="0"></iframe>
-        """
-        st.markdown(pdf_display, unsafe_allow_html=True)
-    else:
-        st.error("No PDF available to display.")
+        if response.status_code == 200:
+            pdf_binary = response.content
+            base64_pdf = base64.b64encode(pdf_binary).decode('utf-8')
+            pdf_display = f"""
+            <iframe src="data:application/pdf;base64,{base64_pdf}" 
+                    width="100%" height="600px" frameborder="0"></iframe>
+            """
+            st.markdown(pdf_display, unsafe_allow_html=True)
+        else:
+            st.error("No PDF available to display.")
     
 def display_paper_chat(paper):
     
@@ -253,7 +253,9 @@ def reset_chat():
 
 def init_chat(paper):
     st.session_state.current_paper = paper
-    pdf_url = paper.links[1].href
+    for link in paper.links:
+        if link.title == 'pdf':
+            pdf_url = link.href
     st.session_state.pdf_url = pdf_url
     st.session_state.pdf_path = paper.download_pdf()
     print(pdf_url)
