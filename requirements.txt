@@ -3,3 +3,4 @@ snowflake-snowpark-python
 snowflake-ml-python
 arxiv
 snowflake
+requests
